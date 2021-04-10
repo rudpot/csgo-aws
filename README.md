@@ -1,6 +1,10 @@
+# Configure CS:GO server in AWS
+
 Follow this: https://medium.com/@alihusseinat/how-to-setup-a-counter-strike-go-dedicated-server-on-aws-5ca80e2acf4f
 
-Changees:
+Changes:
+
+* if you are security conscious, build a new VPC to isolate the instance
 * pick m5.large (t3 is too slow)
 * 50GB of disk space (server download is 28GB)
 * pick newest ubuntu 20.04 LTS
