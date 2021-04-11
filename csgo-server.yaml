@@ -111,7 +111,7 @@ Resources:
               -game csgo \
               -console \
               -usercon \
-                +hostname ${CSGOServerName}
+                +hostname ${CSGOServerName} \
                 +game_type 0 \
                 +game_mode 0 \
                 +mapgroup random_classic \
