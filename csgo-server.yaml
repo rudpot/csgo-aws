@@ -135,8 +135,6 @@ Resources:
             chown ubuntu:ubuntu /var/log/csgo.log
             echo '@reboot /home/ubuntu/server-start.sh' | crontab -u ubuntu -
             sudo -u ubuntu /home/ubuntu/server-start.sh
-
-
       Tags:
         - Key: Name
           Value: cs-go-server
@@ -159,6 +157,9 @@ Resources:
           FromPort: 27010
           ToPort: 27020
           CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: cs-go-server
 
   CSGOInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -178,6 +179,9 @@ Resources:
                 - ec2.amazonaws.com
             Action:
               - 'sts:AssumeRole'
+      Tags:
+        - Key: Name
+          Value: cs-go-server
       Path: /
       ManagedPolicyArns:
         # Allow SSM access
@@ -185,6 +189,10 @@ Resources:
 
   IPAddress:
     Type: AWS::EC2::EIP
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cs-go-server
 
   IPAssoc:
     Type: AWS::EC2::EIPAssociation
