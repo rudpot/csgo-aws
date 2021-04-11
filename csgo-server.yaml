@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  AWS CloudFormation template to stand up CS:GO server
+
+Parameters:
+  CSGOVpcId:
+    Description: 'VPC ID in which to start the server. Ideally this should be isolated from all your other resources'
+    Type: 'AWS::EC2::VPC::Id'
+  CSGOSubnetId:
+    Description: 'Subnet ID for a public subnet in which to start the server. Ideally this should be in a VPC isolated from all your other resources.'
+    Type: 'AWS::EC2::Subnet::Id'
+  UbuntuLatestAmiId:
+    Description: 'AMI ID for most recent Ubuntu image'
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id'
+  RootDiskSize:
+    Description: 'Size of root disk in GB'
+    Type: String
+    AllowedPattern: '[0-9]+'
+    Default: 50
+  InstanceType:
+    Description: 'Server instance type'
+    Type: String
+    Default: m5.large
+  SshKeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  SshAccessFromThisCidrOnly:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: '0.0.0.0/0'
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  CSGOServerToken:
+    Description: A server token provisioned by Steam account management at https://steamcommunity.com/dev/managegameservers for App ID 730
+    Type: String
+    AllowedPattern: '[A-F0-9]+'
+  CSGOServerPassword:
+    Description: 'A password for players to connect to your server. Keep this human readable. Needs to be at least 8 characters.'
+    Type: String
+    MinLength: 8
+  CSGOServerName:
+    Description: 'A human readable name. Must not contain spaces'
+    Type: String
+    MinLength: 8
+    AllowedPattern: '[^ ]+'
+    Default: "CSGO-autogen"
+
+Resources:
+  CSGOServer: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      InstanceType: !Ref 'InstanceType'
+      ImageId: !Ref UbuntuLatestAmiId
+      KeyName: !Ref SshKeyName
+      BlockDeviceMappings: 
+      - DeviceName: "/dev/sda1"
+        Ebs: 
+          VolumeType: "gp3"
+          DeleteOnTermination: true
+          VolumeSize: !Ref RootDiskSize
+      SubnetId: !Ref CSGOSubnetId
+      SecurityGroupIds:
+        - !GetAtt CSGOServerSecurityGroup.GroupId
+      IamInstanceProfile: !Ref CSGOInstanceProfile
+      UserData:
+        # # Helper for searching out right incantation. Paste result in script below
+        # for pkg in steam steamcmd; do
+        #   for arch in "" ":i386"; do
+        #     echo echo ${pkg}${arch} ${pkg}/question select '"I AGREE"' \| debconf-set-selections
+        #     echo echo ${pkg}${arch} ${pkg}/license  select '"Ok"' \| debconf-set-selections
+        #   done
+        # done
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            cat >/home/ubuntu/root-init.sh <<EOT
+            # /bin/bash
+            export DEBIANT_FRONTEND=noninteractive
+            dpkg --add-architecture i386
+            add-apt-repository multiverse
+            apt-get update
+            apt-get -y dist-upgrade
+            apt-get -y install libsdl2-2.0-0:i386
+            # Looking for the right answer incantation ...
+            debconf-show steam steam:i386 steamcmd steamcmd:i386
+            echo steam steam/question select "I AGREE" | debconf-set-selections
+            echo steam steam/license select "Ok" | debconf-set-selections
+            echo steam:i386 steam/question select "I AGREE" | debconf-set-selections
+            echo steam:i386 steam/license select "Ok" | debconf-set-selections
+            echo steamcmd steamcmd/question select "I AGREE" | debconf-set-selections
+            echo steamcmd steamcmd/license select "Ok" | debconf-set-selections
+            echo steamcmd:i386 steamcmd/question select "I AGREE" | debconf-set-selections
+            echo steamcmd:i386 steamcmd/license select "Ok" | debconf-set-selections
+            debconf-show steam steamcmd steam:i386 steamcmd:i386
+            apt-get -yq install steamcmd
+            # apt     -y install steamcmd
+            EOT
+            cat >/home/ubuntu/user-init.sh <<EOT
+            # /bin/bash
+            mkdir ~/csgosv
+            /usr/games/steamcmd +force_install_dir /home/ubuntu/csgosv +login anonymous +app_update 740 validate +quit
+            EOT
+            cat >/home/ubuntu/server-start.sh <<EOT
+            # /bin/bash
+            echo Starting CS-GO server with ${CSGOServerToken} 
+            /home/ubuntu/csgosv/srcds_run \
+              -game csgo \
+              -console \
+              -usercon \
+                +hostname ${CSGOServerName}
+                +game_type 0 \
+                +game_mode 0 \
+                +mapgroup random_classic \
+                +map de_dust2 \
+                +sv_setsteamaccount ${CSGOServerToken} \
+                +sv_password ${CSGOServerPassword} \
+              -net_port_try 1 \
+              >> /var/log/csgo.log 2>&1
+            EOT
+            chown ubuntu:ubuntu /home/ubuntu/root-init.sh /home/ubuntu/user-init.sh /home/ubuntu/server-start.sh
+            chmod 755 /home/ubuntu/server-start.sh
+            echo --------------------------------------------------------------------------
+            echo Updating system and installing steam packages
+            sudo -u root   /bin/bash -x /home/ubuntu/root-init.sh
+            echo --------------------------------------------------------------------------
+            echo Configuring steam bits
+            sudo -u ubuntu /bin/bash -x /home/ubuntu/user-init.sh
+            echo --------------------------------------------------------------------------
+            echo Enabling crontab and starting server
+            touch /var/log/csgo.log
+            chown ubuntu:ubuntu /var/log/csgo.log
+            echo '@reboot /home/ubuntu/server-start.sh' | crontab -u ubuntu -
+            sudo -u ubuntu /home/ubuntu/server-start.sh
+
+
+      Tags:
+        - Key: Name
+          Value: cs-go-server
+
+  CSGOServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access and open CSGO ports
+      VpcId: !Ref CSGOVpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref 'SshAccessFromThisCidrOnly'
+        - IpProtocol: tcp
+          FromPort: 27010
+          ToPort: 27020
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: udp
+          FromPort: 27010
+          ToPort: 27020
+          CidrIp: '0.0.0.0/0'
+
+  CSGOInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: 
+        - !Ref CSGOInstanceRole
+
+  CSGOInstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        # Allow SSM access
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  IPAddress:
+    Type: AWS::EC2::EIP
+
+  IPAssoc:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref 'CSGOServer'
+      EIP: !Ref 'IPAddress'
+
+Outputs:
+  InstanceId:
+    Description: InstanceId of the newly created EC2 instance
+    Value: !Ref 'CSGOServer'
+  InstanceIPAddress:
+    Description: IP address of the newly created EC2 instance
+    Value: !Ref 'IPAddress'
