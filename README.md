@@ -6,6 +6,16 @@
 * Make sure you have a steam account
 * Make sure the steam account has a phone number attached
 * [Create a game server license for App ID 730](https://steamcommunity.com/dev/managegameservers)
+
+### Deploy using AWS console
+
+* log into your AWS console
+* Click this button
+  [![Launch Stack in AWS](https://www.stacklauncher.cloud/assets/icons/button-aws-18.png)](https://api.stacklauncher.cloud?templateUrl=https://raw.githubusercontent.com/rudpot/csgo-aws/main/csgo-server.yaml)
+* Fill in parameters as needed
+
+### Deploy using the CLI
+
 * clone this repo
 * create a parameter file like this called `csgo-server-params.json` - fill in the values and save ... 
   ```json
@@ -47,7 +57,12 @@
     --template-body file://csgo-server.yaml \
     --parameters file://csgo-server-params.json \
     --capabilities CAPABILITY_IAM
+  aws cloudformation wait stack-create-complete \
+    --stack-name csgotest
   ```
+
+### Server access and config
+
 * once the cloudformation stack finishes building you can ssh to the machine and check on installation progress in `less /var/log/cloud-init-output.log`. Note that the maps download takes a _long_ time.
 * after the download finishes a CS:GO server should be started automatically. The server should also restart on reboot. 
 * to change the startup configuration edit `/home/ubuntu/server-start.sh`. In particular you might want to add `+sv_tags` to make it easier to find your server
