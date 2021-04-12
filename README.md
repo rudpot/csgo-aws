@@ -10,7 +10,7 @@
 ### Deploy using AWS console
 
 * log into your AWS console
-* Click this button
+* Click this [stacklauncher.cloud](https://www.stacklauncher.cloud/) button
   [![Launch Stack in AWS](https://www.stacklauncher.cloud/assets/icons/button-aws-18.png)](https://api.stacklauncher.cloud?templateUrl=https://raw.githubusercontent.com/rudpot/csgo-aws/main/csgo-server.yaml)
 * Fill in parameters as needed
 
